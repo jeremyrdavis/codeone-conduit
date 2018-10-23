@@ -47,10 +47,9 @@ public class EventBusTest {
     vertx.<JsonObject>eventBus().send("persistence-address", message, ar -> {
       if (ar.succeeded()) {
         testContext.assertNotNull(ar.result().body());
-        JsonObject returnedUser = (JsonObject) ar.result().body();
+        JsonObject returnedUser = ((JsonObject) ar.result().body()).getJsonObject("user");
         testContext.assertEquals("jake@jake.jake", returnedUser.getString("email"));
         testContext.assertEquals("Jacob", returnedUser.getString("username"));
-        testContext.assertEquals("jwt.token.here", returnedUser.getString("token"));
         async.complete();
       }else{
         testContext.assertTrue(ar.succeeded());
