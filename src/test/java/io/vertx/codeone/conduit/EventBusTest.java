@@ -1,8 +1,9 @@
 package io.vertx.codeone.conduit;
 
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.vertx.codeone.conduit.models.PersistenceVerticle;
+import io.vertx.codeone.conduit.models.User;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
@@ -30,6 +31,19 @@ public class EventBusTest {
     vertx.close();
   }
 
+  /**
+   * {
+   *     "user" :
+   *     {
+   *      "email" : "jake@jake.jake,
+   *      "token" : null
+   *      "username": "Jacob",
+   *      "bio" : null,
+   *      "image" " null
+   *     }
+   * }
+   * @param testContext
+   */
   @Test
   public void testRegisterUserMessage(TestContext testContext) {
 
@@ -47,9 +61,9 @@ public class EventBusTest {
     vertx.<JsonObject>eventBus().send("persistence-address", message, ar -> {
       if (ar.succeeded()) {
         testContext.assertNotNull(ar.result().body());
-        JsonObject returnedUser = ((JsonObject) ar.result().body()).getJsonObject("user");
-        testContext.assertEquals("jake@jake.jake", returnedUser.getString("email"));
-        testContext.assertEquals("Jacob", returnedUser.getString("username"));
+        User returnedUser = Json.decodeValue(ar.result().body().toString(), User.class);
+        testContext.assertEquals("jake@jake.jake", returnedUser.getEmail());
+        testContext.assertEquals("Jacob", returnedUser.getUsername());
         async.complete();
       }else{
         testContext.assertTrue(ar.succeeded());

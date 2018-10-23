@@ -5,6 +5,7 @@ import io.vertx.core.Future;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.auth.mongo.MongoAuth;
 import io.vertx.ext.mongo.MongoClient;
@@ -62,7 +63,7 @@ public class PersistenceVerticle extends AbstractVerticle{
    {
        "email": "jake@jake.jake",
        "token": "jwt.token.here",
-       "username": "jake",
+       "username": "Jacob",
        "bio": "I work at statefarm",
        "image": null
    }
@@ -83,7 +84,7 @@ public class PersistenceVerticle extends AbstractVerticle{
 
         mongoClient.updateCollection("user", query, update, res -> {
           if (res.succeeded()) {
-            message.reply(new JsonObject().put("user", userToRegister));
+            message.reply(Json.encode(userToRegister));
           }else{
             message.fail(2, "insert failed: " + res.cause().getMessage());
           }

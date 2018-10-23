@@ -33,7 +33,6 @@ public class RegisterUserTest {
   @After
   public void tearDown(TestContext testContext) {
    vertx.close();
-   vertx.deployVerticle(HttpVerticle.class.getName());
   }
 
   @Test
