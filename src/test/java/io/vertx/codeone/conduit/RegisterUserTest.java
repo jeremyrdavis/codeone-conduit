@@ -57,7 +57,7 @@ public class RegisterUserTest {
           JsonObject returnedUser = returnedJson.getJsonObject("user");
           testContext.assertEquals("Jacob", returnedUser.getString("username"));
           testContext.assertEquals("jake@jake.jake", returnedUser.getString("email"));
-          testContext.assertEquals("jwt.token.here", returnedUser.getString("token"));
+          testContext.assertNotNull(returnedUser.getString("token"));
           async.complete();
         }else{
           testContext.assertTrue(ar.succeeded());
