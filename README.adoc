@@ -4,12 +4,17 @@ This project is a template to start your own Vert.x project using Apache Maven.
 
 == Prerequisites
 
+* macOS Catalina Version 10.15.4
 * Apache Maven 3.5.1
 * JDK 11.0.2+
 
 == Module Dependencies
 * Vert.x 4.0.0-milestone4
 * Vertx-JUnit5
+
+== Known Bug
+Ubuntu 18.04.4 LTS bionic
+https://github.com/eclipse-vertx/vert.x/issues/3404
 
 == Getting started
 
