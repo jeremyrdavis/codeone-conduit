@@ -1,9 +1,0 @@
-2020-05-13 16:35:42.291 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
-2020-05-13 16:35:42.310 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
-2020-05-13 16:35:43.313 [vert.x-eventloop-thread-3] INFO  io.vertx.codeone.conduit.HttpVerticle - 127.0.0.1 requesting http://localhost:8080/
-2020-05-13 16:35:44.047 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
-2020-05-13 16:35:44.048 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
-2020-05-13 16:35:44.340 [vert.x-eventloop-thread-4] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
-2020-05-13 16:35:44.341 [vert.x-eventloop-thread-4] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
-2020-05-13 16:35:44.609 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
-2020-05-13 16:35:44.609 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
