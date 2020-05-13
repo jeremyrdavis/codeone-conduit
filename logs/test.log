@@ -1,40 +1,9 @@
-2020-05-13 10:44:43.422 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
-2020-05-13 10:44:43.440 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
-2020-05-13 10:44:44.323 [vert.x-eventloop-thread-4] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
-2020-05-13 10:44:44.324 [vert.x-eventloop-thread-4] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
-2020-05-13 10:44:44.347 [vert.x-eventloop-thread-8] ERROR io.vertx.core.impl.ContextImpl - Unhandled exception
-java.util.concurrent.RejectedExecutionException: event executor terminated
-	at io.netty.util.concurrent.SingleThreadEventExecutor.reject(SingleThreadEventExecutor.java:981) ~[netty-common-4.1.42.Final.jar:4.1.42.Final]
-	at io.netty.util.concurrent.SingleThreadEventExecutor.offerTask(SingleThreadEventExecutor.java:388) ~[netty-common-4.1.42.Final.jar:4.1.42.Final]
-	at io.netty.util.concurrent.SingleThreadEventExecutor.addTask(SingleThreadEventExecutor.java:381) ~[netty-common-4.1.42.Final.jar:4.1.42.Final]
-	at io.netty.util.concurrent.SingleThreadEventExecutor.execute(SingleThreadEventExecutor.java:880) ~[netty-common-4.1.42.Final.jar:4.1.42.Final]
-	at io.vertx.core.impl.EventLoopContext.execute(EventLoopContext.java:42) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.EventLoopContext.dispatch(EventLoopContext.java:77) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.EventLoopContext.dispatch(EventLoopContext.java:65) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.FutureImpl.doDispatch(FutureImpl.java:125) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.FutureImpl.dispatch(FutureImpl.java:119) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.FutureImpl.tryComplete(FutureImpl.java:149) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.Promise.complete(Promise.java:67) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.DeploymentManager.lambda$null$4(DeploymentManager.java:227) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.AbstractContext.emit(AbstractContext.java:183) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.EventLoopContext.dispatch(EventLoopContext.java:72) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.EventLoopContext.dispatch(EventLoopContext.java:65) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.FutureImpl.doDispatch(FutureImpl.java:125) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.FutureImpl.dispatch(FutureImpl.java:119) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.FutureImpl.onComplete(FutureImpl.java:97) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.Future.setHandler(Future.java:109) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.DeploymentManager.lambda$doDeploy$5(DeploymentManager.java:210) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.AbstractContext.emit(AbstractContext.java:183) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.vertx.core.impl.EventLoopContext.lambda$execute$0(EventLoopContext.java:42) ~[vertx-core-4.0.0-milestone4.jar:4.0.0-milestone4]
-	at io.netty.util.concurrent.AbstractEventExecutor.safeExecute(AbstractEventExecutor.java:163) [netty-common-4.1.42.Final.jar:4.1.42.Final]
-	at io.netty.util.concurrent.SingleThreadEventExecutor.runAllTasks(SingleThreadEventExecutor.java:510) [netty-common-4.1.42.Final.jar:4.1.42.Final]
-	at io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:518) [netty-transport-4.1.42.Final.jar:4.1.42.Final]
-	at io.netty.util.concurrent.SingleThreadEventExecutor$6.run(SingleThreadEventExecutor.java:1044) [netty-common-4.1.42.Final.jar:4.1.42.Final]
-	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74) [netty-common-4.1.42.Final.jar:4.1.42.Final]
-	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30) [netty-common-4.1.42.Final.jar:4.1.42.Final]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_252]
-2020-05-13 10:44:44.669 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
-2020-05-13 10:44:44.670 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
-2020-05-13 10:44:44.978 [vert.x-eventloop-thread-3] INFO  io.vertx.codeone.conduit.HttpVerticle - 127.0.0.1 requesting http://localhost:8080/
-2020-05-13 10:44:45.009 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
-2020-05-13 10:44:45.010 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
+2020-05-13 16:35:42.291 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
+2020-05-13 16:35:42.310 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
+2020-05-13 16:35:43.313 [vert.x-eventloop-thread-3] INFO  io.vertx.codeone.conduit.HttpVerticle - 127.0.0.1 requesting http://localhost:8080/
+2020-05-13 16:35:44.047 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
+2020-05-13 16:35:44.048 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
+2020-05-13 16:35:44.340 [vert.x-eventloop-thread-4] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
+2020-05-13 16:35:44.341 [vert.x-eventloop-thread-4] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
+2020-05-13 16:35:44.609 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.HttpVerticle
+2020-05-13 16:35:44.609 [vert.x-eventloop-thread-2] INFO  io.vertx.codeone.conduit.MainVerticle - Launching io.vertx.codeone.conduit.models.PersistenceVerticle
