@@ -1,0 +1,1829 @@
+4.0.0 Deprecations and breaking changes
+Thomas Segismont edited this page 18 days ago · 84 revisions
+Vert.x Core
+☑️ EventBus request-response send is removed
+The EventBus#send(..., Handler<AsyncResult<Message<T>>>) and Message#reply(..., Handler<AsyncResult<Message<T>>>) methods are revmoed. Such methods raise overloading issues in Vert.x 4 because the version returning a Future<Message<T>> would collide with the fire and forget version.
+
+The request-response messaging pattern should now use the new request and replyAndRequest methods:
+
+// 3.x
+eventBus.send("the-address", body, ar -> ...);
+
+// 4.0
+eventBus.request("the-address", body, ar -> ...);
+Likewise with replies
+
+// 3.x
+eventBus.consumer("the-address", message -> {
+  message.reply(body, ar -> ...);
+});
+
+// 4.0
+eventBus.consumer("the-address", message -> {
+  message.replyAndRequest(body, ar -> ...);
+});
+☑️ MessageProducer send methods are removed
+https://github.com/eclipse-vertx/vert.x/issues/3005
+
+The MessageProducer interface declares two send methods, such methods are removed. MessageProducer#write(T) should be used instead of MessageProducer#send(T), EventBus#request(String,Object,Handler) should be used instead of MessageProducer#send(T,Handler).
+
+☑️ WriteStream write and end methods fluency
+WriteStream#write and WriteStream#end methods are not fluent anymore:
+
+the callback version now returns void
+the other now returns a Future<Void
+This is a breaking change that removes the fluent write aspect of write streams. Note that the end method accept as parameter a last argument so stream.write(T).end() can actually be stream.end(T)
+
+☑️ NetSocket upgradeToSsl uses Handler<AsyncResult> instead of Handler
+https://github.com/eclipse-vertx/vert.x/issues/2962
+
+Currently the NetSocket#upgradeToSsl method uses an Handler completion. The only way to determine whether the upgrade fails is to set an exception handler on the socket which will replace the current handler and complicate the code.
+
+This method should instead use an Handler<AsyncResult>.
+
+☑️ HttpClient rework
+☑️ HttpClient request/response use Handler<AsyncResult> instead of Handler<HttpClientResponse
+https://github.com/eclipse-vertx/vert.x/issues/2741
+
+HttpClient request/response methods are using in Vert.x 3 patterns following Handler<HttpClientResponse>. For obvious reasons we want to use instead Handler<AsyncResult<HttpClientResponse>> in Vert.x 4. The WebClient provides already this in Vert.x 3.x and it is the advocated client for high level operations so we don't need to provide replacement for these operations, only to deprecate them.
+
+☑️ Usual methods will send the request
+In Vert.x 3.x most HttpClient methods will return an HttpClientRequest that is yet to send. There are a few alternate methods named *Now that will actually send the request on behalf of the user: getNow, optionsNow and headNow.
+
+Vert.x 4 assumes that now the most usual methods behave like the *Now methods and will send the request allowing the user to pass the necessary information to perform the request.
+
+// Get
+Future<HttpClientResponse> f1 = client.get(8080, "localhost", "/uri", HttpHeaders.set("foo", "bar"));
+
+// Post with a buffer body
+Future<HttpClientResponse> f2 = client.post(8080, "localhost", "/uri", HttpHeaders.set("foo", "bar"), Buffer.buffer("some-data"));
+
+// Post with a streaming body
+Future<HttpClientResponse> f3 = client.post(8080, "localhost", "/uri", HttpHeaders.set("foo", "bar"), asyncFile);
+☑️ New send method
+The new send method is the generic way to send requests, i.e
+
+// Is the same as callling get
+Future<HttpClientResponse> f1 = client.send(HttpMethod.GET, 8080, "localhost", "/uri", HttpHeaders.set("foo", "bar"));
+☑️ Enhanced request options
+Vert.x 3 brought the RequestOptions for creating request data in a fluent manner, these options have been enhanced to carry
+
+host
+port
+uri
+ssl
+headers (new)
+follow redirect (new)
+timeout (new)
+Future<HttpClientResponse> fut = client.post(
+   new RequestOptions()
+      .host("example.com")
+      .setURI("/resource")
+      .addHeader("content-type", "application/json"),
+   new JsonObject().put("hello", "world"));
+☑️ Request based API
+The HttpClient#request methods will create an HttpClientRequest that is yet to send, like in Vert.x 3.x . This allow to perform lower level interactions such as
+
+just sending the request headers
+HTTP/2 specific operations such as setting a push handler, setting stream priority, pings, etc...
+creating a NetSocket tunnel
+fine grained write control
+stream reset
+handling 100 continue headers manually
+HttpClientRequest request = client.request(8080, "example.com", "/resource")
+   .setHandler(res -> {
+  // ...
+   })
+  .putHeader("content-type", "application/json")
+  .end(new JsonObject().put("hello", "world"));
+☑️ HttpHeaders enhancement
+The HttpHeaders defines a bunch of useful HTTP header related constants. This is now an interface allowing to create MultiMap instances more easily:
+
+// 3.x
+MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+
+// 4.0
+MultiMap headers = HttpHeaders.headers();
+
+// 4.0
+MultiMap headers = HttpHeaders.set("content-type", "application.data");
+☑️ CaseInsensitiveHeaders made internal
+https://github.com/eclipse-vertx/vert.x/issues/3269
+
+The CaseInsensitiveHeaders implementation of MultiMap is deprecated in Vert.x 3.x and moved in the io.vertx.core.http.impl.headers package in Vert.x 4. This class does not expose more than the MultiMap contract.
+
+// 3.x
+CaseInsensitiveHeaders headers = new CaseInsensitiveHeaders();
+
+// 4.0
+MultiMap multiMap = MultiMap#caseInsensitiveMultiMap();
+
+// Or use
+MultiMap headers = HttpHeaders.headers();
+☑️ HttpClient tunnelling with NetSocket
+https://github.com/eclipse-vertx/vert.x/issues/3207
+
+The HttpClientResponse#netSocket has some design flaws (it is synchronous and does not report errors). It works correctly in Vert.x 3.x at the expense of a few work around but should not be left as it is.
+
+Instead, the requester should provide a socket handler on the request that will be called when the correct response is received.
+
+// 3.x
+client.request(HttpMethod.CONNECT, uri, ar -> {
+  if (ar.succeeded()) {
+    HttpClientResponse response = ar.result();
+    if (response.statusCode() == 200) {
+      NetSocket so = response.netSocket();
+   }
+  }
+}).end();
+
+// In 4.0
+client.request(HttpMethod.CONNECT, uri, ar -> {
+}).netSocket(ar -> {
+  if (ar.succeeded()) {
+   // Got a response with a 200 status code
+   NetSocket so = ar.result();
+   // Go for tunneling
+  }  
+}).end();
+☑️ HttpClient WebSocket use Handler<AsyncResult< WebSocket >> instead of Handler / Handler<Throwable)
+https://github.com/eclipse-vertx/vert.x/issues/2954
+
+HttpClient WebSocket methods are using in Vert.x 3 patterns following Handler<WebSocket>/Handler<Throwable>. For obvious reasons we want to use instead Handler<AsyncResult< WebSocket >> in Vert.x 4. These new methods are named webSocket(...). The number of overloaded methods has also been reduced using WebSocketConnectOptions.
+
+☑️ Remove pooled buffer option
+https://github.com/eclipse-vertx/vert.x/issues/2746
+
+Vert.x provides the option on TCPSSLOptions to configure the usage of pooled buffers. This option has no effect whatsoever and has marked as deprecated in 3.6. We should simply remove it from Vert.x. This option might be overridden by TCPSSLOptions sub classes in other modules of the stack, so the stack should be checked and provide corresponding PR along with this one.
+
+☑️ Future setHandler method pruning
+https://github.com/eclipse-vertx/vert.x/issues/3329
+
+Vert.x supports multiple handler per future in 4.0. The setHandler method does convey the meaning that a single handler per future can be set and unset and the onComplete, onSuccess, onFailure methods shall be used instead.
+
+The setHandler method usage must be replaced by the onComplete method, e.g
+
+// Before
+Future<String> fut = getSomeFuture();
+fut.setHandler(ar -> ...);
+
+// After
+Future<String> fut = getSomeFuture();
+fut.onComplete(ar -> ...);
+Vert.x 3.9 deprecates setHandler.
+
+☑️ Future completer method pruning
+https://github.com/eclipse-vertx/vert.x/issues/2869
+
+The Future#completer() method is deprecated since Future<T> extends Handler<AsyncResult<T>> for some time now (and the default implementation actually returns this).
+
+☑️ Remove multithreaded worker verticles
+See https://github.com/eclipse-vertx/vert.x/issues/2431
+
+MultiThreaded worker verticles are an extension to worker verticles. Like with usual worker verticles, events are handled on worker pool threads. But they can be executed by different threads concurrently, which means the verticle must manage its own state to be visible between threads.
+
+There are many parts of Vert.x which simply doesn't support them. For example, you can't create an HTTP server on a MT worker verticle.
+
+Also, we have seen many new users, in particular those experienced with Spring or Java EE, starting directly with MT worker verticles and adding as many threads as possible with the impression it would help get the best performance results. But this is really counter-productive.
+
+In 3.6.0 we deprecate the usage of multi-threader worker verticles and we document how to replace them. The feature will is dropped in Vert.x 4.
+
+☑️ Deprecate logging API
+See https://github.com/eclipse-vertx/vert.x/issues/2774
+
+The Vert.x logging API is public and advertised in the docs. Besides, there are a couple of issues as it supports parameterised logging methods without standardising on a message format (it delegates this to the logging backend so messages are not portable).
+
+Therefore, we regularly get questions/bug reports about this, which increases the maintenance effort. Also, it's not good to provide a non-working feature only to cause users' disappointment.
+
+Considering it's not a programming toolkit responsibility to provide yet another logging API, the Vert.x loggers shall be deprecated and, in a later major version made internal.
+
+☑️ Remove options clone methods
+See https://github.com/eclipse-vertx/vert.x/issues/2833 and https://github.com/eclipse-vertx/vert.x/issues/2839
+
+KeyCertOptions#clone(), TrustOptions#clone() and SSLEngineOptions#clone() methods are deprecated in 3.7 and are replaced by KeyCertOptions#copy(), TrustOptions#copy() and SSLEngineOptions#copy()` methods in 4.0.
+
+☑️ Remove equals/hashCode method from options
+See https://github.com/eclipse-vertx/vert.x/issues/2840
+
+There is no deprecation in 3.x, users should simply not use it.
+
+☑️ Remove deprecated Metrics#isEnabled() method
+See https://github.com/eclipse-vertx/vert.x/issues/2845
+
+This is an internal SPI method.
+
+☑️ Remove deprecated NetServerOptions#isClientAuthRequired()
+See https://github.com/eclipse-vertx/vert.x/issues/2846
+
+The 3.x version will point to the new method to use instead.
+
+☑️ Remove deprecated VertxOptions#fileResolverCachingEnabled
+See https://github.com/eclipse-vertx/vert.x/issues/2847
+
+The 3.x version will point to the new method to use instead.
+
+☑️ Encapsulate Jackson
+Methods carrying Jackson types are removed from the common Json API. These elements are deprecated in Vert.x 3 with replacements.
+
+Json#mapper field replaced by DatabindCodec#mapper() method
+Json#prettyMapper field replaced by DatabindCodec#prettyMapper() method
+Json#decodeValue(Buffer, TypeReference<T>) method replaced by JacksonCodec#decodeValue(Buffer, TypeReference)
+Json#decodeValue(String, TypeReference<T>) method replaced by JacksonCodec#decodeValue(String, TypeReference)
+When using Jackson't TypeReference
+
+// 3.x
+List<Foo> foo1 = Json.decodeValue(json, new TypeReference<List<Foo>>() {});
+
+// 4.0
+List<Foo> foo2 = io.vertx.core.json.jackson.JacksonCodec.decodeValue(json, new TypeReference<List<Foo>>() {});
+Referencing an ObjectMapper:
+
+// 3.x
+ObjectMapper maper = Json.mapper;
+
+// 4.0
+mapper = io.vertx.core.json.jackson.DatabindCodec.mapper();
+Setting an ObjectMapper:
+
+// 3.x
+Json.mapper = someMapper;
+
+// 4.0
+// You cannot write anymore the mapper instance instead you should use your own static mapper
+// or configure the Databind#mapper() instance
+Remove cluster reply address
+https://github.com/eclipse-vertx/vert.x/issues/2704
+
+TODO
+
+There are still references in the code and docs to the event bus reply address. But it's actually only used now to provide the origin server ID.
+
+☑️ Change JsonObject/JsonArray base64 encoder to base64url
+https://github.com/eclipse-vertx/vert.x/pull/3123
+
+Vert.x JSON types implement RFC-7493, however the implementation was incorrect as it used plain Base64 while the RFC mandates base64url.
+
+In order to ease the migration/interop with other services a utility method is added to Json to convert from base64url to plain base64:
+
+// get a base64 string as with Vert.x 3
+String base64url = someJsonObject.getString("base64encodedElement")
+String base64 = Json.toBase64(base64url);
+☑️ Isolated deployment for Java 8
+https://github.com/eclipse-vertx/vert.x/issues/3274
+
+Vert.x has provided isolated class loading support in Vert.x 3 . This option cannot be properly supported above Java 8 due to the evolution of the Java runtime. In Vert.x 4 we continue provides a best effort support of this option for Java 8.
+
+This relies on Multi-Release Jar support supporting this support for Java version < 11 exclusively. The DeploymentOptions class for Java >= 11 does not provide anymore the class loading related fields and the class loader manager implementation is a no-op implementation.
+
+☑️ VerticleFactory simplification
+Currently the VerticleFactory provides a synchronous contract for instantiating a Verticle. We are changing this contract to become asynchronous and provide instead a Callable<Verticle> instead of a single instance, allowing the deployment phase to call this method once and later on invoke the returned callable many times for creating instances.
+
+// 3.x
+Verticle createVerticle(String verticleName, ClassLoader classLoader) throws Exception;
+
+// 4.0
+void createVerticle(String verticleName, ClassLoader classLoader, Promise<Callable<Verticle>> promise);
+Existing factories can be rewritten by completing or failing the promise with a callable which can be called several times:
+
+// 3.x
+return new MyVerticle();
+
+// 4.0
+promise.complete(() -> new MyVerticle());
+When the factory needs to block, it shall use Vertx#executeBlocking to achieve it and resolve the promise when it obtains the blocking code result (e.g a java.lang.Class) and infers verticle instances from it.
+
+The VerticleFactory has also been simplified to remove the initial resolution of a identifier as the factory can simply perform a nested deployment instead.
+
+NOTE: this change is not for mainstream applications, rather for integration.
+
+☑️ Remove HTTP client request connection handler
+The HttpClientRequest#connectionHandler is removed in Vert.x 4.
+
+Application can instead rely on the HttpClient#connectionHandler to achieve the same:
+
+// 3.x
+client.request().connectionHandler(conn -> {
+  // Do something with connection
+}).end();
+
+// 4.0
+client.connectionHandler(conn -> {
+  // Do something with connection
+});
+☑️ HttpClientRequest sendHead method provides an async result
+The HttpClientRequest#sendHead(Handler<HttpVersion>) method will only call back when the head has been successfully sent and not when there is an error. We need to change this method in Vert.x 4 to be instead HttpClientRequest#sendHead(Handler<AsyncResult<HttpVersion>>).
+
+// 3.x
+client.sendHead(version -> System.out.println("HTTP version is " + version));
+
+// 4.0
+client.sendHead(ar -> {
+  if (ar.succeeded()) {
+    System.out.println("HTTP version is " + ar.result());
+  } else {
+    System.out.println("Could not write HTTP headers);
+  }
+});
+☑️ WebSocket spelling fixes
+https://github.com/eclipse-vertx/vert.x/issues/3235
+
+Vert.x 3.x provides an inconsistent naming concerning for WebSocket, it is often spelled as Websocket. We should address this in Vert.x 4 whenever possible and provide deprecation for incorrect names.
+
+In 4.0, the following were renamed (and deprecated in 3.x):
+
+HttpServerOptions properties
+spelling fixes, e.g getMaxWebsocketFrameSize renamed to getMaxWebSocketFrameSize
+the fixed sub-protocols uses now List<String> instead of a coma separated string
+HttpClientOptions properties spelling fixes, e.g getMaxWebsocketFrameSize renamed to getMaxWebSocketFrameSize
+HttpServer handlers: websocketHandler, websocketStream
+WebsocketRejectedException is removed, instead the UpgradeRejectedException should be used
+☑️ HttpMethod is an interface
+https://github.com/eclipse-vertx/vert.x/issues/3246
+
+In Vert.x 2 and 3, the HttpMethod is declared as an enum. This limits the extensibility of HTTP and prevents modelling other HTTP methods with this type unless using HttpMethod#OTHER in addition with the rawMethod attribute on HttpServerRequest and HttpClientRequest.
+
+In Vert.x 4 we turned this enum into an interface in Vert.x 4.
+
+If you are using the enum in a switch block we can recommend doing
+
+// 3.x
+switch (method) {
+  case GET:
+    ...
+    break;
+  case OTHER:
+    String s = request.getRawMethod();
+    if (s.equals("PROPFIND") {
+      ...
+    } else ...
+}
+
+// 4.0
+switch (method.name()) {
+  case "GET":
+    ...
+    break;
+  case "PROPFIND";
+    ...
+    break;
+}
+
+// or
+
+// 4.0
+HttpMethod PROPFIND = HttpMethod.valueOf("PROPFIND");
+
+if (method == HttpMethod.GET) {
+  ...
+} else if (method.equals(PROPFIND)) {
+  ...
+} else {
+  ...
+}
+If you are using HttpMethod#OTHER you can migrate with:
+
+// 3.x
+client.request(HttpMethod.OTHER, ...).setRawName("PROPFIND");
+
+// 4.0
+client.request(HttpMethod.valueOf("PROPFIND"), ...);
+Removed the Starter class
+The Starter class has been removed in 4.0. It was deprecated for quite a few versions already.
+
+To start Vert.x apps without writing your own main, you can use the io.vertx.core.Launcher class instead.
+
+Clustered flag removed from VertxOptions and EventBusOptions
+In 3.x, the options to build Vert.x provide a clustered boolean with the following behavior:
+
+calling vertx(options) with clustered set to false builds a non clustered instance
+calling vertx(options) with clustered set to true throws an IllegalArgumentException
+calling clusteredVertx(options) with clustered set to true builds a clustered instance
+calling clusteredVertx(options) with clustered set to false does set clustered to true and then builds a clustered instance
+Given this behaviour, the usefulness of this setting is very low and instead it is removed in Vert.x 4.
+
+Vert.x Auth
+☑️ Deprecation and removals (common)
+AbstractUser - All user objects are now constructed by the User.createUser() factory
+AuthOptions - This was a hack for Shell
+PubSecKeyOptions - Now extracts the kind of key from the PEM data, so all getters and setters: publicKey, 'secretKey, symmetric, certificateare not use. Just set thebuffer` setter with the PEM data.
+User the methods isAuthorized is deprecated (authorization should be performed by the AuthorizationProvider
+User the methods clearCache is deprecated (use user.authorizations().clear())
+User the internal method setAuthProvider has no effect and will be removed
+impl.AuthProviderInternal is to be removed (hack for Shell and Web)
+☑️ Deprecation and removals (jdbc)
+JDBCHashStrategy is deprecated for the standard PHC alternative from common
+JDBCAuthOptions is deprecated and replaced by the Authorization and Authentication Options.
+☑️ Deprecation and removals (oauth2)
+Accesstoken is deprecated for the standard ``User` alternative from common
+KeycloakHelper is deprecated as it overlaps with User and is not secure.
+OAuth2Auth#decodeToken deprecated, just use #authenticate()
+OAuth2Auth#introspectToken deprecated, just use #authenticate()
+OAuth2Auth#getFlowType() deprecated (was an internal API that can be reached from the options)
+OAuth2Auth#loadJWK() deprecated (use the jwkSet() as it's the official name from the spec)
+Oauth2ClientOptions#isUseAuthorizationHeader() not used anymore, this data is inferred from the config
+Oauth2ClientOptions#scopeSeparator() not used anymore, this configuration is AuthorizationProvider specific.
+OAuth2RBAC replaced by the new AuthorizationProvider
+Oauth2Response deprecated as it a legacy way to fetch HTTP resource before WebClient existed.
+☑️ Deprecation and removals (shiro)
+The whole module is deprecated due to the blocking API and limitations. Users should upgrade to the new modules:
+
+PropertyFileAuthentication - for property authentication using the same file format
+LDAPAuthentication - for LDAP using the stock JDK API
+☑️ Deprecation and removals (jwt)
+JWT#<ctor>(Keystore, char[]) All keys are now managed by JWK.
+JWTOptions deprecated scopes and scopeDelimiter as they are Authorization config.
+Vert.x gRPC
+☑️ Remove usage of Vert.x gRPC Java Compiler
+https://github.com/vert-x3/vertx-grpc/issues/37
+
+In Vert.x 3.x, Vert.x provides its own compiled gRPC stubs for Vert.x API. This leads to maintain a fork of the grpc compiler which cannot be trivially achieved by anyone. It is agreed in Vert.x 4 to drop this.
+
+Vert.x Rx
+☑️ Remove legacy XYZObservable method in RxJava 1 API
+https://github.com/vert-x3/vertx-rx/issues/113
+
+These methods have been deprecated since rx prefixed version exist and should not be used normally. These methods are simply removed in Vert.x 4. In addition these methods were present on modules created before the introduction of rx prefixes, other modules don't carry it.
+
+Remove deprecated onComplete callback in WriteStream / Subscriber adapters
+https://github.com/vert-x3/vertx-rx/issues/218
+
+The onComplete callback might be invoked while there are outstanding writes in the underlying WriteStream.
+
+Two callbacks have been added, that will be invoked after WriteStream#end signals its completion.
+
+WriteStreamSubscriber<Buffer> subscriber = writeStream.toSubscriber();
+
+// Removed
+subscriber.onComplete(() -> {
+    // Invoked after writeStream#end is invoked, even if operation is not completed yet
+});
+
+// After
+subscriber.onWriteStreamEnd(() -> {
+    // Invoked after writeStream#end is invoked and completes successfully
+});
+subscriber.onWriteStreamError(() -> {
+    // Invoked after writeStream#end is invoked and fails
+});
+Dropwizard Metrics
+☑️ JSON options: remove backward compatibility for monitoredServerUris, monitoredClientUris and monitoredClientEndpoints
+https://github.com/vert-x3/vertx-dropwizard-metrics/issues/87
+
+In 3.3, monitoredServerUris, monitoredClientUris and monitoredClientEndpoints have been renamed to monitoredHttpServerUris, monitoredHttpClientUris and monitoredHttpClientEndpoints, respectively.
+
+In the JSON to options constructor, there is code to support the old options format. It shall be removed now.
+
+Vert.x Web
+☑️ Merged the functionality of SessionHandler and UserSessionHandler
+https://github.com/vert-x3/vertx-web/issues/1093
+
+When working with session users always need to provide 2 handlers. The code is too fine grained and a common source of confusion for users. For this reason, the 2 handlers will be merged into a single SessionHandler.
+
+☑️ Removed the deprecated cookie API
+https://github.com/vert-x3/vertx-web/issues/1337
+
+The vertx-core module introduced in 3.8.1 a cookie API borrowed from vertx-web. The vertx-web cookie support is deprecated in 3.8.1 and removed in 4.0.
+
+☑️ Removed the deprecated Locale
+https://github.com/vert-x3/vertx-web/pull/1385
+
+☑️ Removed the deprecated RoutingContext::accept
+https://github.com/vert-x3/vertx-web/pull/1385
+
+This was a deprecated and duplicate method for handle
+
+☑️ Removed the deprecated JWTAuthHandler exclude factory
+`JWTAuthHandler.create(jwtAuth, "/excluded/path") deprecation was removed. This API had several limitation in terms of exclusions and had several flaws on error handling. The same functionality can be achieved by:
+
+// 3.x
+router
+   // protect everything but "/excluded/path"
+   .route().handler(JWTAuthHandler(jwtAuth, "/excluded/path")
+
+// 4.0
+router
+   .route("/excluded/path").handler(/* public access to "/excluded/path" */)
+   // protect everything
+   .route().handler(JWTAuthHandler(jwtAuth)
+☑️ Removed the deprecated StaticHandler.create(String, ClassLoader)
+https://github.com/vert-x3/vertx-web/pull/1402
+
+This was a required factory for OSGi environments, as OSGi is dropped from the modules this isnt't needed anymore. The alternative solution for users of this factory is to add the resources either to the application classpath or serve resources from the file system.
+
+☑️ Deprecated SessionHandler.setAuthProvider(AuthProvider)
+https://github.com/vert-x3/vertx-web/pull/1406
+
+This deprecation which replaces the method: setAuthProvider with addAuthProvider allows multiple providers to be present in the application and session objects can now be matched and correctly linked. This is usefull when multiple providers are available, for example and application that supports WebAuthN and OAuth2.
+
+☑️ Oauth2 Handler now requires vertx as constructor argument
+The reason was that Oauth2 handler wasn't using the state of the Oauth2 protocol correctly which would mean that it could be vulnerable to replay attacks. The vertx argument allows us to use the secure non blocking random number generator to generate nonces avoid secure applications against this.
+
+☑️ Renamed Prune BridgeOptions
+https://github.com/vert-x3/vertx-web/issues/1499
+
+The default SockJS bridge options have been renamed to SockJSBridgeOptions and now extend the common bridge options. This avoid duplicate code across modules and ensures a common behavior across bridges.
+
+Vert.x Kafka Client
+☑️ Remove deprecated AdminUtils
+https://github.com/vert-x3/vertx-kafka-client/commit/3ac632fc32d4bb6464633c13ca3615d34b513be4
+
+The AdminUtils class, for doing administrative operations on a Kafka cluster, was removed. The new KafkaAdminClient class should be used for that.
+
+https://github.com/vert-x3/vertx-kafka-client/pull/122
+
+Vert.x Mail Client
+☑️ Attachement is now an API interface and not anymore a data object
+In order to allow mail attachment streaming we converted the Attachment data object to be an API object instead which will allow the streaming implementation.
+
+https://github.com/vert-x3/vertx-mail-client/pull/110
+
+☑️ MailConfig extends NetClientOptions
+MailConfig extends NetClientOptions now to support proxy setting in the underline NetClient. This will lead to the following breaks:
+
+This will lead to different output Json format regarding to the trusted keystore part, it can read the old Json format configuration.
+The hashCode() and equals() methods take consideration of fields in the super class.
+https://github.com/vert-x3/vertx-mail-client/pull/122
+
+Creating a non shared client
+MailClient#createNonShared method was deprecated in 3.8.x and is now removed. Use MailClient#create instead.
+
+☑️ Vert.x Redis Client
+The new API io.vertx.redis.client.Redis replaced the old one. The new API is connection oriented and supports all modern feature of Redis. In order to use an API similar to the old one an helper class: RedisAPI is available to expose all known commands as methods.
+
+☑️ Vert.x MQTT
+A few fluent methods return now Future instead of being fluent, e.g:
+
+// 3.x
+client
+   .publish("hello", Buffer.buffer("hello"), MqttQoS.EXACTLY_ONCE, false, false)
+   .publish("hello", Buffer.buffer("hello"), MqttQoS.AT_LEAST_ONCE, false, false);
+
+// 4.0
+client.publish("hello", Buffer.buffer("hello"), MqttQoS.EXACTLY_ONCE, false, false);
+client.publish("hello", Buffer.buffer("hello"), MqttQoS.AT_LEAST_ONCE, false, false);
+☑️ Vert.x Kafka Client
+https://github.com/vert-x3/vertx-kafka-client/issues/145
+
+The flush operations are declared with Handler<Void> argument instead of Handler<AsyncResult<Void>>. They have been changed to the correct type. In practice the user code will work equally well and will get an async result instead of null value.
+
+☑️ Vert.x Circuit Breaker
+https://github.com/vert-x3/vertx-circuit-breaker/issues/36
+
+executeCommandXXX methods are renamed executeXXX for futurization purpose. In the 3.x branch we deprecate these methods and we add the new methods as deprecation replacements. These methods are removed in Vert.x 4 because of the renaming.
+
+// 3.x
+breaker.executeCommand(promise -> ..., res -> ...);
+
+// 4.0
+breaker.execute(promise -> ..., res -> ...);
+☑️ Vert.x AMQP Client
+https://github.com/vert-x3/vertx-amqp-client/issues/21
+
+Currently the client declares a few methods that takes an Handler<AmqpMessage> as parameter, this handler is then set on a ReadStream<AmqpMessage>. Such methods raise issues with futurisation as the futurised form has the same erased signature than other methods, e.g
+
+Future<AmqpReceiver> createReceiver(String, Handler<AmqpMessage>);
+void createReceiver(String, Handler<AsyncResult<AmqpReceiver>>);
+Such methods are removed in Vert.x 4 and are deprecated in 3.x
+
+Vert.x Auth
+☑️ OAuth2Auth#createKeycloak is removed
+The factory method was removed as it was deprecated for long time. To configure Keycloak users should now use the provider factory:
+
+io.vertx.ext.auth.oauth2.providers.KeycloakAuth this provider will allow configuring the provider similar to the old factory: KeycloakAuth#create(vertx, JsonObject) as well as other mechanisms such as OpenID Discovery.
+
+☑️ OAuth2Auth#create(Vertx, OAuth2FlowType, OAuth2ClientOptions) is removed
+The factory method was removed as it was deprecated for long time. The flow type is configurable on the OAuth2ClientOptions options object so this factory introduced confusion. User should use:
+
+OAuth2Auth.create(vertx, new OAuth2ClientOptions().setFlow(YOUR_DESIRED_FLOW));
+☑️ OAuth2Auth#create(Vertx, OAuth2FlowType) is removed
+The factory method was removed as it was deprecated for long time. The flow type is configurable on the OAuth2ClientOptions options object so this factory introduced confusion. User should use:
+
+OAuth2Auth.create(vertx, new OAuth2ClientOptions().setFlow(YOUR_DESIRED_FLOW));
+☑️ io.vertx.ext.auth.jwt.JWTOptions is removed
+This data object was deprecated as it was yet another way to define JWT options, it was replaced by io.vertx.ext.jwt.JWTOptions with the same structure as this allows JWT options to be shared with other providers.
+
+☑️ io.vertx.ext.auth.oauth2.AccessToken#refreshToken is removed
+Refresh tokens are vendor specific and are not guaranteed to be JWTs therefore cannot be decoded/verified. Access is still possible using:
+
+accessToken.opaqueRefreshToken()
+Which returns the raw String instead of the json object.
+
+☑️ io.vertx.ext.auth.User#isAuthorised is removed
+The deprecated method was replaced by the z variant as it makes it easier to reason with AuthZ
+
+user.isAuthorized("some-permission", hander);
+☑️ SecretOptions is removed
+This option is duplicate of PubSecKeyOptions in order to keep just 1 API to achieve the same result the option class was removed and users are expected to update their code to:
+
+// 3.x
+new SecretOptions()
+        .setType("HS256")
+        .setSecret("notasecret")
+
+// 4.0
+new PubSecKeyOptions()
+        .setAlgorithm("HS256")
+        .setSecretKey("notasecret")
+☑️ Vert.x Service Discovery
+The creation of ServiceDiscovery passing an Handler<ServiceDiscovery> is removed.
+
+The methods
+
+ServiceDiscovery#registerServiceImporter
+ServiceDiscovery#registerServiceExporter
+are not fluent anymore since now they return Future<Void> instead.
+
+☑️ Vert.x Service Config
+https://github.com/vert-x3/vertx-config/issues/97
+
+The instance method of ConfigRetriever (and deprecated in 3.x)
+
+// deprecated
+Future<JsonObject> fut = ConfigRetriever. getConfigAsFuture(retriever);
+
+// instead use in 4
+fut = retriever.getConfig();
+☑️ Vert.x Mongo Client
+https://github.com/vert-x3/vertx-mongo-client/issues/204
+
+The following methods have been deprecated for a long time in 3.x and removed in Vert.x 4
+
+update(String collection, JsonObject query, JsonObject update, Handler<AsyncResult<Void>> resultHandler) instead use updateCollection
+updateWithOptions(String collection, JsonObject query, JsonObject update, UpdateOptions options, Handler<AsyncResult<Void>> resultHandler) instead use updateCollectionWithOptions
+replace(String collection, JsonObject query, JsonObject replace, Handler<AsyncResult<Void>> resultHandler) instead use replaceDocuments
+replaceWithOptions(String collection, JsonObject query, JsonObject replace, UpdateOptions options, Handler<AsyncResult<Void>> resultHandler) instead use replaceDocumentsWithOptions
+remove(String collection, JsonObject query, Handler<AsyncResult<Void>> resultHandler) instead use removeDocuments
+removeWithOptions(String collection, JsonObject query, WriteOption writeOption, Handler<AsyncResult<Void>> resultHandler) instead use removeDocumentsWithOptions
+removeOne(String collection, JsonObject query, Handler<AsyncResult<Void>> resultHandler) instead use removeDocument
+removeOneWithOptions(String collection, JsonObject query, WriteOption writeOption, Handler<AsyncResult<Void>> resultHandler) instead use removeDocumentsWithOptions
+e.g
+
+// 3.x
+mongoClient.update(collection, new JsonObject().put("_id", docIdToBeUpdated), new JsonObject().put("$set", new JsonObject().put("foo", "fooed")), ar -> ... });
+
+// 4.0
+mongoClient.updateCollection(collection, new JsonObject().put("_id", docIdToBeUpdated), new JsonObject().put("$set", new JsonObject().put("foo", "fooed")), ar -> ...});
+Creating a non shared client
+MongoClient#createNonShared method was deprecated in 3.8.x and is now removed. Use MongoClient#create instead.
+
+☑️ Vert.x Stomp
+StompClientConnection frame based methods should use an async result
+https://github.com/vert-x3/vertx-stomp/issues/58
+
+Currently StompClientConnection has a bunch of methods consuming a Handler<Frame> as receipt handler, such signatures don't handle failures and needs to be changed to use Handler<AsyncResult<Frame>> instead.
+
+// 3.x
+connection.send("/queue", Buffer.buffer("Hello"), frame -> ...);
+
+// 4.0
+connection.send("/queue", Buffer.buffer("Hello"), res -> {
+  if (res.succeeded()) {
+    Frame frame = res.result();
+    ...
+  } else {
+    ...
+  }
+});
+StompClientConnection subscribe method should return an async id instead of a frame
+https://github.com/vert-x3/vertx-stomp/issues/59
+
+StompClientConnection has its subscribe method that returns the subscription id. Since we are futurizing the client, such method will instead return a Future of the result and thus we need before to have the subscribe method to use a receipt handler of the id instead of the frame.
+
+Handler<Frame> handler = frame -> System.out.println("Just received a frame from /queue : " + frame);
+
+// 3.x
+String id = connection.subscribe("/queue", handler);
+
+// 4.0
+connection.subscribe("/queue", handler, res -> {
+  if (res.succeeded()) {
+    String id = res.results();
+  } else {
+    // Failure
+  }
+});
+☑️ Vert.x RabbitMQ Client
+The client has been reworked in Vert.x 4 to use RabbitMQ types instead of wrappers or JsonObject for these types
+
+Use void async result type instead of JsonObject in ack/nack
+// 3.x
+client.ack(tag, true, res -> {
+  if (res.succeeded()) {
+    JsonObject o = res.result()
+    // o was actually null
+  }
+});
+
+// 4.0
+client.ack(tag, true, res -> {
+  if (res.succeeded()) {
+    Void v = res.result()
+  }
+});
+Basic get uses RabbitMQ message instead JSON object
+// 3.x
+client.basicGet("my.queue", true, res -> {
+  if (res.succeeded()) {
+    JsonObject msg = res.results();
+    ...
+  }
+  ...
+});
+
+// 4.0
+client.basicGet("my.queue", true, res -> {
+  if (res.succeeded()) {
+    RabbitMQMessage msg = res.results();
+    ...
+  }
+  ...
+});
+Rabbit MQ message use RabbitMQ properties and envelope instead of wrappers
+// 3.x
+client.basicConsumer("my.queue", ar -> {
+  if (ar.succeeded()) {
+    RabbitMQConsumer consumer = ar.result();
+    consumer.handler(msg -> {
+      io.vertx.rabbitmq.BasicProperties props = msg.properties();
+      io.vertx.rabbitmq.Envelope envelope = msg.envelope();
+    });
+  }
+});
+
+// 4.0
+client.basicConsumer("my.queue", ar -> {
+  if (ar.succeeded()) {
+    RabbitMQConsumer consumer = ar.result();
+    consumer.handler(msg -> {
+      com.rabbitmq.client.BasicProperties props = msg.properties();
+      com.rabbitmq.clientEnvelope envelope = msg.envelope();
+    });
+  }
+});
+Basic publish should use RabbitMQ properties and buffer instead of JSON Object
+// 3.x
+JsonObject message = new JsonObject().put("body", "Hello RabbitMQ, from Vert.x !");
+message.put("priority", priority);
+client.basicPublish("", "my.queue", message, pubResult -> ...);
+
+// 4.0
+Buffer message = Buffer.buffer("Hello RabbitMQ, from Vert.x !");
+BasicProperties props, new AMQP.BasicProperties.Builder().priority(priority).build();
+client.basicPublish("", "my.queue", props, message, pubResult -> ...);
+client queue declaration method provides Rabbit MQ async result instead of JSON object
+// 3.x
+client.queueDeclare("my.queue", true, true, ar -> {
+  if (ar.succeeded()) {
+    JsonObject res = ar.result();
+  }
+  ...
+});
+
+// 4.0
+client.queueDeclare("my.queue", true, true, ar -> {
+  if (ar.succeeded()) {
+    AMQP.Queue.DeclareOk res = ar.result();
+  }
+  ...
+});
+client queue delete method provides Rabbit MQ async result instead of JSON object
+// 3.x
+client.queueDelete("my.queue", ar -> {
+  if (ar.succeeded()) {
+    JsonObject res = ar.result();
+  }
+  ...
+});
+
+// 4.0
+client.queueDelete("my.queue", ar -> {
+  if (ar.succeeded()) {
+    AMQP.Queue.DeleteOk res = ar.result();
+  }
+  ...
+});
+☑️ Vert.x Web - GraphQL
+Polyglot support
+The current tech preview API has been changed to be supported on polyglot environments:
+
+UploadScalar is now a factory, use UploadScalar.create()
+VertxBatchLoader is now a factory, use: io.vertx.ext.web.handler.graphql.dataloader.VertxBatchLoader.create()
+VertxDataFetcher is now a factory, use: io.vertx.ext.web.handler.graphql.schema.VertxDataFetcher.create()
+VertxPropertyDataFetcher is now a factory, use: io.vertx.ext.web.handler.graphql.schema.VertxPropertyDataFetcher.create()
+Vert.x Codegen
+Standardize on templateFilename and filename attribute names
+In codegen.json files, it was possible to use either templateFilename or templateFileName attribute names, even if the former was the only one documented. Same goes with filename and fileName
+
+Vert.x 4.0 will no longer supports alternative attribute names and standardizes on templateFilename and filename.
+
+Deprecated processor options removal
+Removed the support for codeGenerators (replaced by codegen.generators) and outputDirectory (replaced by codegen.output). Those are internal changes for code generators mainly and most users should not be affected.
+
+Vert.x JDBC Client
+Creating a non shared client
+JDBCClient#createNonShared method was deprecated in 3.8.x and is now removed. Use JDBCClient#create instead.
+
+Vert.x Cassandra Client
+Creating a non shared client
+CassandraClient#createNonShared methods were deprecated in 3.8.x and are now removed. Use CassandraClient#create instead.
+
+DataStax driver version change
+Major DataStax driver version has been changed from 3 to 4. Migration requires import and usage changes:
+
+// vertx 3.x
+import com.datastax.driver.core.SimpleStatement;
+
+SimpleStatement statement =
+  new SimpleStatement("SELECT release_version FROM system.local");
+cassandraClient.execute(statement, ar -> ... );
+
+// vertx 4.x+
+import com.datastax.oss.driver.api.core.cql.SimpleStatement;
+
+SimpleStatement statement =
+  SimpleStatement.newInstance("SELECT release_version FROM system.local");
+cassandraClient.execute(statement, ar -> ... );
+Mappers are not supported
+Such constructions as this one:
+
+@Table(keyspace = "test", name = "names")
+public class MappedClass {
+  @PartitionKey
+  private String name;
+   ...
+}
+are no longer possible.
+
+Vert.x Lang Kotlin
+☑️ Removal of script compiler
+https://github.com/vert-x3/vertx-lang-kotlin/issues/166
+
+Vert.x 3 provides a Kotlin Script compiler based on Kotlin Compiler API. The API often breaks and creates friction for upgrading Kotlin versions. This is removed in Vert.x 4.0.
+
+Vert.x JUnit5
+Split the core implementation and extensions
+Due to a dependency cycle in the Vert.x stack, the core has been rewritten around a service provider interface for parameter injection.
+
+While this is largely transparent in terms of API, you need to be aware that:
+
+the Vertx parameter should be placed before any parameter that requires it for creation, such as when injecting a WebClient,
+the vertx-junit5 module now only offers APIs for the Vert.x core module (vertx-core),
+the vertx-junit5-extensions module now hosts extensions that offer extra parameter types like WebClient,
+the RxJava 1 and 2 bindings are now offered as vertx-junit5-rx-java and
+vertx-junit5-rx-java2 modules in the vertx-junit5-extensions repository.
+
+3.9.1 Deprecations and breaking changes
+Billy Yuan edited this page 4 days ago · 1 revision
+Vert.x SQL Client
+Prepared statement created by SqlConnection#prepare should not be cached
+https://github.com/eclipse-vertx/vertx-sql-client/issues/577
+
+io.vertx.sqlclient.PreparedStatement created by SqlConnection#prepare is not cached internally by the client any more, the lifecycle of this should be managed by the user. Prepared statement objects created by using one-shot preparedQuery like SqlClient#preparedQuery will be cached as usual.
+
+Postgres named prepared statement support
+PgConnection#prepare now opens a named prepared statement instead of an unnamed
+one while the one-shot preparedQueries still open unnamed prepared statements.
+
+Vert.x Core
+Verticle start / stop methods with Future parameter get deprecated
+Given the new Promise / Future APIs the start(Future<Void>) and stop(Future<Void>) methods have been deprecated and will be removed in Vert.x 4.
+
+Please migrate to the start(Promise<Void>) and stop(Promise<Void>) variants.
+
+Disable EDNS by default
+https://github.com/eclipse-vertx/vert.x/issues/3337
+
+EDNS is an extension mechanism for DNS (https://fr.wikipedia.org/wiki/EDNS) that should be disabled by default. It might cause unwanted issue and should be disabled by default.
+
+Future setHandler method gets deprecated
+https://github.com/eclipse-vertx/vert.x/issues/3328
+
+Vert.x supports multiple handler per future since the 3.8.4 release. The setHandler method does convey the meaning that a single handler per future can be set and unset and the onComplete, onSuccess, onFailure methods shall be used instead.
+
+The setHandler method usage should be replaced by the onComplete method, e.g
+
+// Before
+Future<String> fut = getSomeFuture();
+fut.setHandler(ar -> ...);
+
+// After
+Future<String> fut = getSomeFuture();
+fut.onComplete(ar -> ...);
+The setHandler will be removed in Vert.x 4.
+
+Multi threaded worker verticle documentation removal
+The documentation is removed, however the feature remains
+
+Vert.x SQL Client
+Fluent query API
+The query API becomes fluent with the addition of a Query API for creation and configuration of queries before their execution.
+
+The current PreparedQuery API is changed such as it extends Query and becomes used outside of a connection context. A new PreparedStatement API is therefore introduced that allows for prepared statement management and execution of prepared statements spanning several interactions such as a cursor or a stream.
+
+Query collectors now becomes part of the Query interface.
+
+This is a breaking API change done under the tech preview status given that SQL client is a Vert.x 4 feature back-ported to Vert.x 3.
+
+One-shot simple query
+// Before
+client.query(sql, ar -> ...);
+
+// After
+Query<RowSet<Row>> query = client.query(sql);
+query.execute(ar -> ...);
+
+// Or fluently
+client.query(sql).execute(ar -> ...);
+One-shot prepared query
+// Before
+client.preparedQuery(sql, tuple, ar -> ...);
+client.preparedQuery(sql, tuple, collector, ar -> ...);
+
+// After
+PreparedQuery<RowSet<Row>> query = client.preparedQuery(sql);
+query.execute(tuple, ar -> ...);
+
+// Or fluently
+client.preparedQuery(sql).execute(tuple, ar -> ...);
+client.preparedQuery(sql).collecting(collector).execute(tuple, ar -> ...);
+One-shot prepared collector query
+// Before
+client.preparedQuery(sql, tuple, collector, ar -> ...);
+
+// After
+PreparedQuery<RowSet<Row>> query = client.preparedQuery(sql);
+PreparedQuery<SqlResult<List<Row>> collectedQuery = query.collecting(Collectors.toList());
+collectedQuery.execute(tuple, ar -> ...);
+
+// Or fluently
+client.preparedQuery(sql).collecting(Collectors.toList()).execute(tuple, ar -> ...);
+One-shot batch
+// Before
+client.preparedBatch(sql, listOfTuples, ar -> ...);
+
+// After
+client.preparedQuery(sql).executeBatch(listOfTuples, ar -> ...);
+Prepared query
+// Before
+connection.prepare(sql, ar1 -> {
+  if (ar1.succeded()) {
+    PreparedStatement ps = ar1.result();
+    ps.execute(tuple, ar2 -> ...);
+  }
+});
+
+// After
+connection.prepare(sql, ar1 -> {
+  if (ar1.succeded()) {
+    PreparedStatement ps = ar1.result();
+    PreparedQuery<RowSet<Row>> pq = ps.query();
+    pq.execute(tuple, ar2 -> ...);
+
+   // Or fluently
+    ps.query().execute(tuple, ar2 -> ...);
+  }
+});
+Vert.x Kafka Client
+Remove deprecated AdminUtils
+https://github.com/vert-x3/vertx-kafka-client/commit/47fcc755f4b85bc1f3f2cef17a14ec72c8baf449
+
+The AdminUtils class, for doing administrative operations on a Kafka cluster, was removed. The new KafkaAdminClient class should be used for that.
+
+https://github.com/vert-x3/vertx-kafka-client/pull/164
+
+Vert.x Core
+Verticle start / stop methods with Future parameter get deprecated
+Given the new Promise / Future APIs the start(Future<Void>) and stop(Future<Void>) methods have been deprecated and will be removed in Vert.x 4.
+
+Please migrate to the start(Promise<Void>) and stop(Promise<Void>) variants.
+
+Disable EDNS by default
+https://github.com/eclipse-vertx/vert.x/issues/3337
+
+EDNS is an extension mechanism for DNS (https://fr.wikipedia.org/wiki/EDNS) that should be disabled by default. It might cause unwanted issue and should be disabled by default.
+
+Future setHandler method gets deprecated
+https://github.com/eclipse-vertx/vert.x/issues/3328
+
+Vert.x supports multiple handler per future since the 3.8.4 release. The setHandler method does convey the meaning that a single handler per future can be set and unset and the onComplete, onSuccess, onFailure methods shall be used instead.
+
+The setHandler method usage should be replaced by the onComplete method, e.g
+
+// Before
+Future<String> fut = getSomeFuture();
+fut.setHandler(ar -> ...);
+
+// After
+Future<String> fut = getSomeFuture();
+fut.onComplete(ar -> ...);
+The setHandler will be removed in Vert.x 4.
+
+Multi threaded worker verticle documentation removal
+The documentation is removed, however the feature remains
+
+Vert.x SQL Client
+Fluent query API
+The query API becomes fluent with the addition of a Query API for creation and configuration of queries before their execution.
+
+The current PreparedQuery API is changed such as it extends Query and becomes used outside of a connection context. A new PreparedStatement API is therefore introduced that allows for prepared statement management and execution of prepared statements spanning several interactions such as a cursor or a stream.
+
+Query collectors now becomes part of the Query interface.
+
+This is a breaking API change done under the tech preview status given that SQL client is a Vert.x 4 feature back-ported to Vert.x 3.
+
+One-shot simple query
+// Before
+client.query(sql, ar -> ...);
+
+// After
+Query<RowSet<Row>> query = client.query(sql);
+query.execute(ar -> ...);
+
+// Or fluently
+client.query(sql).execute(ar -> ...);
+One-shot prepared query
+// Before
+client.preparedQuery(sql, tuple, ar -> ...);
+client.preparedQuery(sql, tuple, collector, ar -> ...);
+
+// After
+PreparedQuery<RowSet<Row>> query = client.preparedQuery(sql);
+query.execute(tuple, ar -> ...);
+
+// Or fluently
+client.preparedQuery(sql).execute(tuple, ar -> ...);
+client.preparedQuery(sql).collecting(collector).execute(tuple, ar -> ...);
+One-shot prepared collector query
+// Before
+client.preparedQuery(sql, tuple, collector, ar -> ...);
+
+// After
+PreparedQuery<RowSet<Row>> query = client.preparedQuery(sql);
+PreparedQuery<SqlResult<List<Row>> collectedQuery = query.collecting(Collectors.toList());
+collectedQuery.execute(tuple, ar -> ...);
+
+// Or fluently
+client.preparedQuery(sql).collecting(Collectors.toList()).execute(tuple, ar -> ...);
+One-shot batch
+// Before
+client.preparedBatch(sql, listOfTuples, ar -> ...);
+
+// After
+client.preparedQuery(sql).executeBatch(listOfTuples, ar -> ...);
+Prepared query
+// Before
+connection.prepare(sql, ar1 -> {
+  if (ar1.succeded()) {
+    PreparedStatement ps = ar1.result();
+    ps.execute(tuple, ar2 -> ...);
+  }
+});
+
+// After
+connection.prepare(sql, ar1 -> {
+  if (ar1.succeded()) {
+    PreparedStatement ps = ar1.result();
+    PreparedQuery<RowSet<Row>> pq = ps.query();
+    pq.execute(tuple, ar2 -> ...);
+
+   // Or fluently
+    ps.query().execute(tuple, ar2 -> ...);
+  }
+});
+Vert.x Kafka Client
+Remove deprecated AdminUtils
+https://github.com/vert-x3/vertx-kafka-client/commit/47fcc755f4b85bc1f3f2cef17a14ec72c8baf449
+
+The AdminUtils class, for doing administrative operations on a Kafka cluster, was removed. The new KafkaAdminClient class should be used for that.
+
+https://github.com/vert-x3/vertx-kafka-client/pull/164
+
+3.8.6 Deprecations and breaking changes
+Thomas Segismont edited this page on Feb 6 · 2 revisions
+API
+Vert.x Core
+Deprecation of CaseInsensitiveHeaders
+https://github.com/eclipse-vertx/vert.x/issues/3268
+
+The CaseInsensitiveHeaders is the implementation of MultiMap obtained by MultiMap#caseInsensitiveMultiMap(). Users should never use the type CaseInsensitiveHeaders nor instantiate it, instead they should use MultiMap and MultiMap#caseInsensitiveMultiMap().
+
+// Deprecated
+CaseInsensitiveHeaders headers = new CaseInsensitiveHeaders();
+
+// After
+MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+This class is deprecated in 3.8 and moved in 4.0 in an implementation package.
+
+Vert.x Rx
+Deprecated onComplete callback in WriteStream / Subscriber adapters
+https://github.com/vert-x3/vertx-rx/issues/218
+
+The onComplete callback might be invoked while there are outstanding writes in the underlying WriteStream.
+
+Two callbacks have been added, that will be invoked after WriteStream#end signals its completion.
+
+WriteStreamSubscriber<Buffer> subscriber = writeStream.toSubscriber();
+
+// Deprecated
+subscriber.onComplete(() -> {
+    // Invoked after writeStream#end is invoked, even if operation is not completed yet
+});
+
+// After
+subscriber.onWriteStreamEnd(() -> {
+    // Invoked after writeStream#end is invoked and completes successfully
+});
+subscriber.onWriteStreamError(() -> {
+    // Invoked after writeStream#end is invoked and fails
+});
+The deprecated callback will be removed in 4.0.
+
+Vert.x Core
+HTTP client request connection handler
+The HttpClientRequest#connectionHandler is removed in Vert.x 4 and deprecated in 3.x (see https://github.com/eclipse-vertx/vert.x/issues/3211).
+
+Application can instead rely on the HttpClient#connectionHandler to achieve the same:
+
+// Deprecated
+client.request().connectionHandler(conn -> {
+  // Do something with connection
+}).end();
+
+// Instead do
+client.connectionHandler(conn -> {
+  // Do something with connection
+});
+WebSocket deprecations
+Vert.x 3.x provides an inconsistent naming concerning for WebSocket, it is often spelled as Websocket. We should address this in Vert.x 4 whenever possible and provide deprecation for incorrect names.
+
+In 3.x we provide deprecations along with correctly spelled equivalents:
+
+HttpServerOptions properties
+spelling fixes, e.g getMaxWebsocketFrameSize renamed to getMaxWebSocketFrameSize
+the fixed sub-protocols uses now List<String> instead of a coma separated string
+HttpClientOptions properties spelling fixes, e.g getMaxWebsocketFrameSize renamed to getMaxWebSocketFrameSize
+HttpServer handlers (websocketHandler, websocketStream)
+WebsocketRejectedException is deprecated and now extends the more generic UpgradeRejectedException
+Vert.x Mongo Client
+Creating a non shared client
+MongoClient#createNonShared method is deprecated in favor of MongoClient#create for consistency with all other Vert.x APIs.
+
+Vert.x JDBC Client
+Creating a non shared client
+JDBCClient#createNonShared method is deprecated in favor of JDBCClient#create for consistency with all other Vert.x APIs.
+
+Vert.x Cassandra Client
+Creating a non shared client
+CassandraClient#createNonShared methods are deprecated in favor of CassandraClient#create for consistency with all other Vert.x APIs.
+
+Vert.x Mail Client
+Creating a non shared client
+MailClient#createNonShared method is deprecated in favor of MailClient#create for consistency with all other Vert.x APIs.
+
+Vert.x Auth
+AbstractUser
+PubSecKeyOptions.{getPublicKey,setPublicKey,getSecretKey,setSecretKey,isSymmetric,setSymmetric,setCertificate}
+User.isAuthorized(String, Handler)
+User.clearCache()
+User.setAuthProvider()
+AuthProviderInternal
+JDBCAuthOptions
+JDBCHashStrategy
+AccessToken
+KeycloakHelper
+Oauth2Auth.introspectToken()
+Oauth2Auth.getFlowType()
+Oauth2Auth.loadJWK(Handler)
+Oauth2Auth.rbacHandler()
+Oauth2ClientOptions.{isUseBasicAuthorization(),setUseBasicAuthorizationHeader(),getScopeSeparator(),setScopeSeparator()}
+ShiroAuth
+All these classes/methods have been deprecated as they will be removed on 4.0. Note however that functionality will not be always removed but replaced with a newer API, that shall be on 4.0 only.
+
+These deprecations are warnings to what will happen soon and removals are only
+related to API streamlining (more than 1 way to achieve the same result).
+
+3.8.3 Deprecations and breaking changes
+Julien Viet edited this page on Oct 19, 2019 · 4 revisions
+Vert.x Core
+Server WebSocket asynchronous handshake
+Server WebSocket setHandshake(Promise<Integer>) was actually a design issue and it has been replaced by setHandshake(Future<Integer>, Handler<AsyncResult<Integer>>).
+
+Removal of unmodifiable completed promises
+Promise has been introduced in Vert.x 3.8 and as mirror of the Future API we added succeededPromise(Object), failedPromise(Throwable) methods. In fact such creation of Promise has no practical use case because any API consuming a Promise shall mutate it and there is no point mutating a Promise already completed. It is safer to just remove these methods rather than deprecating them and removing them in Vert.x 4.
+
+Vert.x SQL Client
+MySQL Client
+useAffectedRows has been supported and it can be used to enable/disable the
+CLIENT_FOUND_ROWS flag when connecting to the server. CLIENT_FOUND_ROWS is
+enabled by default now so the SqlResult#rowCount method returns the found rows
+instead of affected rows for DML queries by default in MySQL.
+
+
+3.8.5 Deprecations and breaking changes
+Paulo Lopes edited this page on Jan 29 · 3 revisions
+Vert.x Core
+HTTP client request connection handler
+The HttpClientRequest#connectionHandler is removed in Vert.x 4 and deprecated in 3.x (see https://github.com/eclipse-vertx/vert.x/issues/3211).
+
+Application can instead rely on the HttpClient#connectionHandler to achieve the same:
+
+// Deprecated
+client.request().connectionHandler(conn -> {
+  // Do something with connection
+}).end();
+
+// Instead do
+client.connectionHandler(conn -> {
+  // Do something with connection
+});
+WebSocket deprecations
+Vert.x 3.x provides an inconsistent naming concerning for WebSocket, it is often spelled as Websocket. We should address this in Vert.x 4 whenever possible and provide deprecation for incorrect names.
+
+In 3.x we provide deprecations along with correctly spelled equivalents:
+
+HttpServerOptions properties
+spelling fixes, e.g getMaxWebsocketFrameSize renamed to getMaxWebSocketFrameSize
+the fixed sub-protocols uses now List<String> instead of a coma separated string
+HttpClientOptions properties spelling fixes, e.g getMaxWebsocketFrameSize renamed to getMaxWebSocketFrameSize
+HttpServer handlers (websocketHandler, websocketStream)
+WebsocketRejectedException is deprecated and now extends the more generic UpgradeRejectedException
+Vert.x Mongo Client
+Creating a non shared client
+MongoClient#createNonShared method is deprecated in favor of MongoClient#create for consistency with all other Vert.x APIs.
+
+Vert.x JDBC Client
+Creating a non shared client
+JDBCClient#createNonShared method is deprecated in favor of JDBCClient#create for consistency with all other Vert.x APIs.
+
+Vert.x Cassandra Client
+Creating a non shared client
+CassandraClient#createNonShared methods are deprecated in favor of CassandraClient#create for consistency with all other Vert.x APIs.
+
+Vert.x Mail Client
+Creating a non shared client
+MailClient#createNonShared method is deprecated in favor of MailClient#create for consistency with all other Vert.x APIs.
+
+Vert.x Auth
+AbstractUser
+PubSecKeyOptions.{getPublicKey,setPublicKey,getSecretKey,setSecretKey,isSymmetric,setSymmetric,setCertificate}
+User.isAuthorized(String, Handler)
+User.clearCache()
+User.setAuthProvider()
+AuthProviderInternal
+JDBCAuthOptions
+JDBCHashStrategy
+AccessToken
+KeycloakHelper
+Oauth2Auth.introspectToken()
+Oauth2Auth.getFlowType()
+Oauth2Auth.loadJWK(Handler)
+Oauth2Auth.rbacHandler()
+Oauth2ClientOptions.{isUseBasicAuthorization(),setUseBasicAuthorizationHeader(),getScopeSeparator(),setScopeSeparator()}
+ShiroAuth
+All these classes/methods have been deprecated as they will be removed on 4.0. Note however that functionality will not be always removed but replaced with a newer API, that shall be on 4.0 only.
+
+These deprecations are warnings to what will happen soon and removals are only
+related to API streamlining (more than 1 way to achieve the same result).
+
+
+3.8.3 Deprecations and breaking changes
+Julien Viet edited this page on Oct 19, 2019 · 4 revisions
+Vert.x Core
+Server WebSocket asynchronous handshake
+Server WebSocket setHandshake(Promise<Integer>) was actually a design issue and it has been replaced by setHandshake(Future<Integer>, Handler<AsyncResult<Integer>>).
+
+Removal of unmodifiable completed promises
+Promise has been introduced in Vert.x 3.8 and as mirror of the Future API we added succeededPromise(Object), failedPromise(Throwable) methods. In fact such creation of Promise has no practical use case because any API consuming a Promise shall mutate it and there is no point mutating a Promise already completed. It is safer to just remove these methods rather than deprecating them and removing them in Vert.x 4.
+
+Vert.x SQL Client
+MySQL Client
+useAffectedRows has been supported and it can be used to enable/disable the
+CLIENT_FOUND_ROWS flag when connecting to the server. CLIENT_FOUND_ROWS is
+enabled by default now so the SqlResult#rowCount method returns the found rows
+instead of affected rows for DML queries by default in MySQL.
+
+3.8.2 Deprecations and breaking changes
+Julien Viet edited this page on Oct 14, 2019 · 14 revisions
+Vert.x Core
+Deprecate Json elements referencing Jackson types
+We deprecate and provide replacement for these elements of the Json API referencing directly Jackon's types.
+
+Json#mapper field replaced by DatabindCodec#mapper() method
+Json#prettyMapper field replaced by DatabindCodec#prettyMapper() method
+Json#decodeValue(Buffer, TypeReference<T>) method replaced by JacksonCodec#decodeValue(Buffer, TypeReference)
+Json#decodeValue(String, TypeReference<T>) method replaced by JacksonCodec#decodeValue(String, TypeReference)
+These are available in Vert.x 4
+
+Here are a few migration examples:
+
+With TypeReference
+
+// Now deprecated
+List<Foo> foo1 = Json.decodeValue(json, new TypeReference<List<Foo>>() {});
+
+// You should use instead
+List<Foo> foo2 = io.vertx.core.json.jackson.JacksonCodec.decodeValue(json, new TypeReference<List<Foo>>() {});
+Referencing an ObjectMapper:
+
+// Now deprecated
+ObjectMapper maper = Json.mapper;
+
+// You should use instead
+mapper = io.vertx.core.json.jackson.DatabindCodec.mapper();
+Setting an ObjectMapper:
+
+// Now deprecated
+Json.mapper = someMapper;
+
+// You cannot write anymore the mapper instance instead you should use your own static mapper
+// or configure the Databind#mapper() instance
+Vert.x Web
+StaticHandler changes
+The factory create(String, ClassLoader) is deprecated and will be removed on 4.0. Users are advised to add classpath resources to the classpath directly instead of having a classloader.
+
+SockJSHandler changes
+The SockJSHandler#socketHandler(...) and SockJSHandler#bridge(...) methods now return a Router object instead of being fluent. This allows the sockjs handler to be mounted as a sub-router. Previously it was being handled as a Handler however this would not handle failures correctly. The correct way to mount SockJS should be:
+
+router.mountSubRouter("/eventbus", SockJS.create(vertx).bridge(...));
+In the future the SockJS handler shall stop implementing the Handler<RoutingContex> interface too.
+
+This change also means that the methods:
+
+socketHandler(Handler)
+bridge(BridgeOptions)
+Are not fluent anymore and return a Router instead.
+
+The example above shows the change.
+
+Vert.x Circuit Breaker
+Rename executeCommandXXX to executeXXX then deprecate them
+In Vert.x 4, executeCommandXXX methods are renamed executeXXX for futurization purpose. In the 3.x branch we deprecate these methods and we add the new methods as deprecation replacements.
+
+// Now this is deprecated
+breaker.executeCommand(promise -> ..., res -> ...);
+
+// Instead you should use
+breaker.execute(promise -> ..., res -> ...);
+Vert.x Service Discovery
+ServiceDiscovery async create deprecation for removal in Vert.x 4
+The ServiceDiscovery creation methods with an Handler are deprecated for removal in Vert.x 4.
+
+The completion handler will not take in account failure. The completion handler actually runs the ServiceImporter#start and ServiceExporter#init methods, so calling these methods will result in them being called twice, once at registration time and once by the initialisation callback.
+
+If this prevents an actual use case in community we can still provide a better alternative.
+
+Vert.x Config
+In Vert.x 4 this method is now an instance method of ConfigRetriever, so we deprecate this in 3.x
+
+// deprecated
+Future<JsonObject> fut = ConfigRetriever. getConfigAsFuture(retriever);
+
+// instead use in 3.X
+fut = Future.future(retriever::getConfig);
+
+// or in 4.0
+fut = retriever.getConfig();
+Vert.x SQL Client
+RowSet is a generic type as RowSet<R> allowing the API to return other types than row.
+
+// before
+client.query("SELECT * FROM users WHERE id='julien'", ar -> {
+  if (ar.succeeded()) {
+    RowSet rows = ar.result();
+  } else ...
+});
+
+// in 3.8.2
+client.query("SELECT * FROM users WHERE id='julien'", ar -> {
+  if (ar.succeeded()) {
+    RowSet<Row> rows = ar.result();
+  } else ...
+});
+
+3.8.1 Deprecations and breaking changes
+Thomas Segismont edited this page on Aug 22, 2019 · 4 revisions
+API
+Vert.x Web
+Cookie handling
+See
+
+https://github.com/vert-x3/vertx-web/issues/1336
+https://github.com/eclipse-vertx/vert.x/issues/3050
+The vertx-core module introduce a cookie API borrowed from vertx-web. The vertx-web cookie support is deprecated and uses the new vertx-core cookie API.
+
+The io.vertx.ext.web.Cookie interface extends io.vertx.core.http.Cookie and this new interface should be used instead.
+
+router.route().handler(routingContext -> {
+  // Before 3.8.1
+  io.vertx.ext.web.Cookie cookie1 = routingContext.getCookie("the-cookie");
+
+  // After 3.8.1
+  io.vertx.core.http.Cookie cookie2 = routingContext.getCookie("the-cookie");
+});
+The io.vertx.ext.web.handler.CookieHandler is not anymore necessary as cookie are now managed by HttpServerRequest and HttpServerResponse. This handler is deprecated and its usage should be simply removed.
+
+// Before 3.8.1
+router.route().handler(CookieHandler.create());
+router.route().handler(SessionHandler.create(LocalSessionStore.create(vertx)));
+
+// After 3.8.1
+router.route().handler(SessionHandler.create(LocalSessionStore.create(vertx)));
+GraphiQL IDE
+See https://github.com/vert-x3/vertx-web/pull/1343
+
+GraphiQL IDE is now built along with vertx-web-graphql. It is thus easier to maintain and avoids dependencies on CDN resources (useful while developing on slow networks or behind corporate proxies). However the setup is changed.
+
+Before 3.8.1:
+
+GraphQLHandlerOptions options = new GraphQLHandlerOptions()
+  .setGraphiQLOptions(new GraphiQLOptions().setEnabled(true));
+router.route("/graphql").handler(GraphQLHandler.create(graphQL, options));
+After 3.8.1:
+
+GraphiQLHandlerOptions options = new GraphiQLHandlerOptions()
+  .setEnabled(true);
+router.route("/graphiql/*").handler(GraphiQLHandler.create(options));
+Vert.x AMQP Client
+https://github.com/vert-x3/vertx-amqp-client/issues/20
+
+Currently the client declares a few methods that takes an Handler<AmqpMessage> as parameter, this handler is then set on a ReadStream<AmqpMessage>. Such methods raise issues with futurisation as the futurised form has the same erased signature than other methods, e.g
+
+Future<AmqpReceiver> createReceiver(String, Handler<AmqpMessage>);
+void createReceiver(String, Handler<AsyncResult<AmqpReceiver>>);
+Such methods are removed in Vert.x 4 and are deprecated in 3.x
+
+3.8.0 Deprecations and breaking changes
+Julien Viet edited this page on Jun 27, 2019 · 15 revisions
+API
+Vert.x 3.8 improves the asynchronous programming model by introducing the io.vertx.core.Promise interface that defines the contract for creating and completing asynchronous results. As consequence a few API have been deprecated and sometimes breaking.
+
+Vert.x Core
+Event bus acknowledged send
+The EventBus#send(..., Handler<AsyncResult<Message<T>>>) and Message#reply(..., Handler<AsyncResult<Message<T>>>) methods are now deprecated. Such methods raise overloading issues in Vert.x 4 because the version returning a Future<Message<T>> would collide with the fire and forget version.
+
+The request-response messaging pattern should now use the new request and replyAndRequest methods:
+
+// Deprecated
+eventBus.send("the-address", body, ar -> ...);
+
+// Now you should do this
+eventBus.request("the-address", body, ar -> ...);
+Likewise with replies
+
+// Deprecated
+eventBus.consumer("the-address", message -> {
+  message.reply(body, ar -> ...);
+});
+
+// Now you should do this
+eventBus.consumer("the-address", message -> {
+  message.replyAndRequest(body, ar -> ...);
+});
+MessageProducer send methods
+The MessageProducer interface declares two send methods, such methods should be deprecated. MessageProducer#write(T) should be used instead of MessageProducer#send(T), EventBus#request(String,Object,Handler) should be used instead of MessageProducer#send(T,Handler).
+
+MessageProducer<String> producer = eventBus.sender("the-address");
+
+// Deprecated
+producer.send("the-address");
+
+// Now you should use
+producer.write("the-address");
+Likewise:
+
+MessageProducer<String> producer = eventBus.sender("the-address");
+
+// Deprecated
+producer.send("the-address", ar -> ...);
+
+// Now you should use
+eventBus.request("the-address", ar -> ...);
+Future creation and completion
+It replaces the creation and completion of io.vertx.core.Future:
+
+// Deprecated
+Future<String> fut = Future.future();
+vertx.setTimer(1000, id -> fut.complete("hello");
+return fut;
+
+// Now you should do this
+Promise<String> promise = Promise.promise();
+vertx.setTimer(1000, id -> promise.complete("hello");
+return promise.future();
+Creating and completing futures is deprecated in Vert.x 3.8 in favor of promises.
+
+Verticle lifecycle
+Consequently the Verticle contract has been updated to provide lifecycle method using promises. The current methods using futures remains and is deprecated. Users should instead switch to the promise version:
+
+// Before 3.8
+class MyVerticle extends AbstractVerticle {
+  // Deprecated
+  public void start(Future<Void> fut) {
+    ...
+  }
+}
+
+// After 3.8
+class MyVerticle extends AbstractVerticle {
+  // Now use this instead
+  public void start(Promise<Void> fut) {
+    ...
+  }
+}
+Blocking tasks
+Vert.x provides the executeBlocking method in a few places to execute blocking tasks where the user provides an handler that receives a future that shall be completed by the blocking task. These method signatures have been changed to use a promise instead.
+
+// Before
+vertx.executeBlocking(future -> ..., result -> ...);
+
+// After it the same, but you can rename the name future to promise instead
+vertx.executeBlocking(promise -> ..., result -> ...);
+Any Future type declaration should be changed to Promise instead:
+
+// Before
+vertx.executeBlocking((Future<String> future) -> ..., result -> ...);
+
+// After
+vertx.executeBlocking((Promise<String> promise) -> ..., result -> ...);
+This is a breaking change.
+
+Future composition
+Future provides one form of composition that consumes a future as input:
+
+// Deprecated and not replaced
+future.compose(res -> ..., anotherFuture);
+
+// Instead do it with a mapping function
+future.compose(res -> {
+  ...
+  return anotherFuture;
+});
+Vert.x Web
+Now the Route match failures are signaled with the appropriate status code, not always 404. Refeer to vertx-web documentation section "Route match failures"
+Vert.x circuit breaker
+The following methods replace Handler<Future<T>> by Handler<Promise<T>> in their signature:
+
+CircuitBreaker#execute
+CircuitBreaker#executeCommand
+CircuitBreaker#executeWithFallback
+CircuitBreaker#executeCommandWithFallback
+CircuitBreaker#executeAndReport
+CircuitBreaker#executeAndReportWithFallback
+// Before
+breaker.execute(future -> {
+  ...
+});
+
+// After it the same, but you can rename the name future to promise instead
+breaker.execute(promise -> {
+  ...
+});
+Any Future type declaration should be changed to Promise instead:
+
+// Before
+breaker.execute((Future<String> future) -> {
+  ...
+});
+
+// After
+breaker.execute((Promise<String> promise) -> {
+  ...
+});
+This is a breaking change.
+
+Vert.x health checks
+The following methods replace Handler<Future<T>> by Handler<Promise<T>> in their signature:
+
+HealthCheckHandler#register
+HealthChecks#register
+HealthChecks hc = HealthChecks.create(vertx);
+
+// Before
+hc.register("my-procedure", future -> future.complete(Status.OK()));
+
+// After is the same but renaming future to promise is more appropriate
+hc.register("my-procedure", promise -> promise.complete(Status.OK()));
+Any Future type declaration should be changed to Promise instead:
+
+HealthChecks hc = HealthChecks.create(vertx);
+
+// Before
+hc.register("my-procedure", (Future<Status> future) -> future.complete(Status.OK()));
+
+// After
+hc.register("my-procedure", (Promise<Status> promise) -> promise.complete(Status.OK()));
+This is a breaking change.
+
+Vert.x Mongo Client
+RxJava and RxJava 2 API changes, some methods now return Maybe instead of Single
+
+rxUpdateCollection
+rxUpdateCollectionWithOptions
+rxReplaceDocuments
+rxReplaceDocumentsWithOptions
+rxBulkWrite
+rxBulkWriteWithOptions
+rxRemoveDocument
+rxRemoveDocumentWithOptions
+rxRemoveDocuments
+rxRemoveDocumentsWithOptions
+rxRunCommand
+
+3.7.1 Deprecations and breaking changes
+Francesco Guardiani edited this page on Jun 24, 2019 · 4 revisions
+API
+Vert.x Core
+Deprecations
+The various HttpClient#websocket(...) and HttpClient#websocketStream(...) have been deprecated in favor of HttpClient#webSocket(...) methods. Such methods ared in 4.0. See https://github.com/eclipse-vertx/vert.x/issues/2955 and https://github.com/eclipse-vertx/vert.x/issues/2954
+Vert.x Kafka Client
+Breaking
+Currently the Kafka write overloaded method provides as async result the record metadata write(KafkaProducerRecord<K, V>, Handler<AsyncResult<RecordMetaData>>. Vert.x WriteStream defines so far the write(KakfaProducerRecord<K,V>) method which gets overloaded with write(KafkaProducerRecord<K, V>, Handler<AsyncResult<Void>>) in 3.7.1 as part of an improvement for write streams. We need to rename the current write(KafkaProducerRecord<K, V>, Handler<AsyncResult<RecordMetaData>>) to send(KafkaProducerRecord<K, V>, Handler<AsyncResult<RecordMetaData>>) and change the async result type of write to be void. See https://github.com/vert-x3/vertx-kafka-client/issues/134
+Vert.x Web Client
+Breaking
+https://github.com/vert-x3/vertx-web/pull/1265
+
+
+3.7.0 Deprecations and breaking changes
+Julien Viet edited this page on Mar 27, 2019 · 13 revisions
+API
+Vert.x Core
+Deprecation
+KeyCertOptions#clone() and TrustOptions#clone() methods are deprecated and now instead KeyCertOptions#copy() and TrustOptions#copy() methods should be used. See https://github.com/eclipse-vertx/vert.x/issues/2833
+SSLEngineOptions#clone() method is deprecated and now instead the SSLEngineOptions#copy() method should be used. See https://github.com/eclipse-vertx/vert.x/issues/2839
+Breaking
+HttpServerOptions and HttpClientOptions fixed a few inconsistencies around WebSocket per-message compression. See https://github.com/eclipse-vertx/vert.x/issues/2838
+Future#completer() method is deprecated since Future<T> extends Handler<AsyncResult<T>> for some time now (and the default implementation actually returns this). See https://github.com/eclipse-vertx/vert.x/issues/2778
+EventBusOptions delegates in VertxOptions are no longer needed as it is possible to configure all Vert.x options with -options arg since 3.6. See https://github.com/eclipse-vertx/vert.x/issues/2873
+Vert.x Cassandra Client
+Breaking
+Redesign client lifecycle: this enhancement breaks the previous tech preview API; CassandraClient no longer has connect and disconnect methods; instead, client is connected on first request; if created inside a verticle the client is closed automatically; otherwise, it should be closed manually with close
+Vert.x Kafka Client
+Deprecation
+The AdminUtils class, for doing administrative operations on a Kafka cluster, is now deprecated. The new KafkaAdminClient class should be used for that.
+Vert.x Mongo Client
+Breaking RxJava and RxJava 2 changes that return Maybe instead of Single
+save
+saveWithOptions
+insert
+insertWithOptions
+findOne
+findOneAndUpdate
+findOneAndUpdateWithOptions
+findOneAndReplace
+findOneAndReplaceWithOptions
+findOneAndDelete
+findOneAndDeleteWithOptions
+Vert.x Web
+Deprecations
+The UserSessionHandler is now deprecated, indeed this feature is now merged in the SessionHandler itself.
+
+The following:
+
+router.route().handler(SessionHandler.create(LocalSessionStore.create(vertx)));
+router.route().handler(UserSessionHandler.create(authProvider));
+should be replaced by
+
+router.route().handler(SessionHandler.create(LocalSessionStore.create(vertx)).setAuthProvider(authProvider));
+Vert.x Web API Contract
+Breaking
+The default option for "automatic mount validation failure handler" now is false
+Now the router is configured to correctly fail with 405 Method Not Allowed more than always failing with 501 Not Implemented when you have a path that has multiple HTTP methods, which some are configured and some are not configured. https://github.com/vert-x3/vertx-web/issues/1167
+Deprecation
+Validation failure handler and not implemented handler are deprecated, now you
+should use new Router.errorHandler() for managing routing related errors
+https://github.com/vert-x3/vertx-web/pull/1166
+
+
+3.6.0 Deprecations and breaking changes
+Thomas Segismont edited this page on Dec 12, 2018 · 2 revisions
+API
+Vert.x Core
+Deprecated
+Multi-threaded worker deprecation
+Deprecate and mark for removal isUsePooledBuffers
+Breaking
+EventBus interceptors should be able to intercept on both send and receipt: this enhancement breaks the previous unofficial API, i.e the SendContext interface and the EventBus method for adding/removing interceptors have been changed to complete this feature.
+MultiMap should return entries in addition order
+Vert.x SQL Common
+Breaking
+Make SQLConnection implement java.io.Closeable
+Vert.x RabbitMQ Client
+Breaking
+RabbitmqClient#messageCount should asynchronously return int, not json
+RabbitmqClient#basicConsume now returns a string tag instead of void
+Vert.x Consul Client
+Breaking
+Supports only version of the agent >= 1.0.0
+Signature of healthState endpoints changed to accept any state
+Vert.x Service Discovery
+Breaking
+vertx-service-discovery-bridge-consul now uses /v1/health/service/ endpoint
+Vert.x Web
+Deprecated
+Template Engines are not coupled to RoutingContext Template Engines do not take a RoutingContext as argument but a JsonObject or java Map so they can be used outside the web realm, for example mailing lists. The change would require that calling the render(ctx, ...) method should become: render(ctx.data(), ...).
+Template engines create factory methods now require passing a Vertx instance. If you had been instantiating template engines in field declarations, then you now need to move the instantiation to either a start method or lazy initialization.
+Some templating engines like Freemarker used a context object to access data, like in ${context.foo}. Accessing data has been normalized across all templating engines to not use context, so in Freemarker ${context.foo} is now simply ${foo}.
+Vert.x Web API Contract
+Breaking
+Moved some configuration methods from RouterFactoryOptions to RouterFactory
+Removed some deprecated methods from RouterFactory and OpenAPI3RouterFactory
+Updated swagger-parser 2.0.5, now relative refs paths works as expected
+Vert.x Rx
+Breaking
+Various method now return a Maybe<T> instead of Single<T> as the value can be null
+the Vertx and WorkerExecutor rxExecuteBlocking methods
+the AsyncMap get, putIfAbsent, remove and replace methods
+ Pages 90
+Find a Page…
+Home
+3.1.0 Breaking changes
+3.1.0 Release Notes
+3.2.0 Release Notes
+3.2.0 Breaking changes
+3.2.1 Breaking Changes
+3.2.1 Release Notes
+3.3.0 Release Notes
+3.3.0 Breaking Changes
+3.3.1 Release Notes
+3.3.2 Release Notes
+3.3.3 Release Notes
+3.4.0 Breaking Changes
+3.4.0 Release Notes
+3.4.1 Release Notes
+Clone this wiki locally
+
+3.5.1 Breaking Changes
+Francesco Guardiani edited this page on Jan 31, 2018 · 11 revisions
+Vert.x Core
+The HttpClient default redirect handler policy changed to only follow the redirection for HEAD or GET requests upon response status 301, 302 and 307
+The HttpClient does not anymore buffer the request body when the request is configured to follow redirections
+Vert.x MQTT
+In 3.5.0, the module name for Javascript and Ruby are incorrect: vertx-mqtt-server-js and vertx-mqtt-server. They have been renamed to vertx-mqtt-js and vertx-mqtt
+Vert.x Mongo Client
+Batching methods (e.g. findBatch) now return a ReadStream instead of invoking an AsyncResult handler serveral times. This brings backpressure support and also also allows a correct Rxified API generation. See https://github.com/vert-x3/vertx-mongo-client/issues/110
+Vert.x Web API Contracts
+Created new method OpenAPI3RouterFactory.create() to initialize router factory that accepts local paths/absolute paths/local and remote urls (file and http protocols). Deprecated createRouterFactoryFromURL() and createRouterFactoryFromFile()
+Changed name of DesignDrivenRouterFactory to RouterFactory
+Now you should manage OpenAPI3RouterFactory behaviours with RouterFactoryOptions new class. OpenAPI3RouterFactory's methods enableValidationFailureHandler(), mountOperationsWithoutHandlers() and setValidationFailureHandler() will be removed in future releases. You can find documentation here: http://vertx.io/docs/apidocs/io/vertx/ext/web/api/contract/RouterFactoryOptions.html
+In 3.5.0 behaviours of OpenAPI's allowEmptyValue and default were wrong. Now they work as expected by specification
+Vert.x Ignite Based Cluster Manager
+Changed internal representation of cache keys and values that implement
+ClusterSerializable interface. Such objects will be converted to
+io.vertx.spi.cluster.ignite.impl.ClusterSerializationUtils.ClusterSerializableValue
+instances.
+
+3.5.0 Breaking Changes
+Julien Viet edited this page on Oct 10, 2017 · 13 revisions
+Vert.x Auth
+JWTAuth create method now takes JWTAuthOptions instead of JsonObject for configuration. This brings more type safety to the config and less undocumented features of the provider. https://github.com/vert-x3/vertx-auth/pull/124
+Oauth2Auth the method getToken is now deprecated and replaced by the common authenticate https://github.com/vert-x3/vertx-auth/pull/156
+OAuth2Auth the method api is removed as it was supposed to be an internal helper to get a Token and is not suitable for usage outside that. A new Api fetch is added to the AccessToken for general use.
+Hazelcast Cluster Manager
+Hazelcast has been upgraded to 3.8.2. All nodes in the cluster should use Hazelcast 3.7+. See the Hazelcast Compatibility Matrix
+MQTT Server
+The publishCompleteHandler in the MqttEndpoint interface is now renamed in publishCompletionHandler to be aligned with handler naming convention in all others Vert.x components.
+Vert.x Web
+io.vertx.ext.web.handler.sockjs.BridgeEventType enum has been removed and you should use: io.vertx.ext.bridge.BridgeEventType enum instead.
+SessionStore put, clear, delete take in AsyncResult<Void> instead of AsyncResult<Boolean> as the value was always true and did not reflect if the operation succeeded.
+Consul client
+In case the key is not found, the methods ConsulClient#getValue() and ConsulClient#getValueWithOptions() provides an empty KeyValue object instead of an failed AsyncResult
+In case the key prefix is not found, the methods ConsulClient#getValues() and ConsulClient#getValuesWithOptions() provides an empty KeyValueList object instead of an failed AsyncResult
+Watchers must handle WatchResult object instead of AsyncResult
+Service Discovery
+In clustered mode the service discovery default backend has been updated to use another strategy. All member needs to be updates to read / write in this new backend.
+Vert.x for Ruby
+All predicate methods end with question mark again (lost in 3.4). It is idiomatic in Ruby.
+Vert.x for Groovy
+The automatic migration path for Verticles written against the previous API has
+been removed - Vert.x 3.5.0 assumes that applications have been migrated to the
+new API.
+
+3.5.0 Breaking Changes
+Julien Viet edited this page on Oct 10, 2017 · 13 revisions
+Vert.x Auth
+JWTAuth create method now takes JWTAuthOptions instead of JsonObject for configuration. This brings more type safety to the config and less undocumented features of the provider. https://github.com/vert-x3/vertx-auth/pull/124
+Oauth2Auth the method getToken is now deprecated and replaced by the common authenticate https://github.com/vert-x3/vertx-auth/pull/156
+OAuth2Auth the method api is removed as it was supposed to be an internal helper to get a Token and is not suitable for usage outside that. A new Api fetch is added to the AccessToken for general use.
+Hazelcast Cluster Manager
+Hazelcast has been upgraded to 3.8.2. All nodes in the cluster should use Hazelcast 3.7+. See the Hazelcast Compatibility Matrix
+MQTT Server
+The publishCompleteHandler in the MqttEndpoint interface is now renamed in publishCompletionHandler to be aligned with handler naming convention in all others Vert.x components.
+Vert.x Web
+io.vertx.ext.web.handler.sockjs.BridgeEventType enum has been removed and you should use: io.vertx.ext.bridge.BridgeEventType enum instead.
+SessionStore put, clear, delete take in AsyncResult<Void> instead of AsyncResult<Boolean> as the value was always true and did not reflect if the operation succeeded.
+Consul client
+In case the key is not found, the methods ConsulClient#getValue() and ConsulClient#getValueWithOptions() provides an empty KeyValue object instead of an failed AsyncResult
+In case the key prefix is not found, the methods ConsulClient#getValues() and ConsulClient#getValuesWithOptions() provides an empty KeyValueList object instead of an failed AsyncResult
+Watchers must handle WatchResult object instead of AsyncResult
+Service Discovery
+In clustered mode the service discovery default backend has been updated to use another strategy. All member needs to be updates to read / write in this new backend.
+Vert.x for Ruby
+All predicate methods end with question mark again (lost in 3.4). It is idiomatic in Ruby.
+Vert.x for Groovy
+The automatic migration path for Verticles written against the previous API has
+been removed - Vert.x 3.5.0 assumes that applications have been migrated to the
+new API.
+
+
+
+

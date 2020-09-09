@@ -4,8 +4,12 @@ This project is a template to start your own Vert.x project using Apache Maven.
 
 == Prerequisites
 
-* Apache Maven
-* JDK 8+
+* Apache Maven 3.5.1
+* JDK 11.0.2+
+
+== Module Dependencies
+* Vert.x 4.0.0-milestone4
+* Vertx-JUnit5
 
 == Getting started
 

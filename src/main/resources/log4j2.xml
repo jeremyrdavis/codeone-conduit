@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Write all logging to it's perspective console except show io.vertx.* to
+     console 
+-->
+
+<Configuration status="DEBUG">
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
+        </Console>
+        <File name="AppFile" fileName="logs/app.log" immediateFlush="false" append="true">
+            <PatternLayout pattern="%d{yyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
+        </File>
+        <File name="HTTPLog" fileName="logs/http.log" immediateFlush="true" append="true">
+            <PatternLayout pattern="%d{yyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
+        </File>
+        <File name="MongoLog" fileName="logs/mongo.log" immediateFlush="true" append="true">
+            <PatternLayout pattern="%d{yyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
+        </File>
+        <File name="NettyLog" fileName="logs/netty.log" immediateFlush="true" append="true">
+            <PatternLayout pattern="%d{yyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
+        </File>
+    </Appenders>
+    <Loggers>
+        <Logger name="org.mongodb" level="trace" additivity="true">
+            <AppenderRef ref="MongoLog" />
+        </Logger>
+        <Logger name="io.vertx.codeone" level="trace" additivity="true">
+            <AppenderRef ref="HTTPLog" />
+            <AppenderRef ref="Console" />
+        </Logger>
+        <Logger name="io.netty" level="trace" additivity="true">
+            <AppenderRef ref="NettyLog" />
+        </Logger>
+
+        <Root level="trace">
+            <AppenderRef ref="AppFile" />
+        </Root>
+
+    </Loggers>
+</Configuration>
